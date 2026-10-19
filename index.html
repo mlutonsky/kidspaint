@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🎨 KidsPaint!</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@700;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --toolbar-h: 88px;
+    --shadow: 0 6px 0 rgba(0,0,0,0.18);
+    --shadow-sm: 0 3px 0 rgba(0,0,0,0.15);
+    --btn-size: 68px;
+    --radius: 20px;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #fff;
+    touch-action: none;
+    font-family: 'Nunito', sans-serif;
+  }
+
+  /* Canvas fills everything above toolbar */
+  #canvas-wrap {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    bottom: var(--toolbar-h);
+    overflow: hidden;
+    background: #fff;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  /* Toolbar */
+  #toolbar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: var(--toolbar-h);
+    background: linear-gradient(135deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff);
+    background-size: 300% 300%;
+    animation: rainbowBg 30s ease infinite;
+    border-top: 4px solid rgba(255,255,255,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 8px 20px 10px;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+    z-index: 10;
+  }
+  @keyframes rainbowBg {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  .tool-btn {
+    width: var(--btn-size);
+    height: var(--btn-size);
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    font-size: 1.9rem;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    transition: transform 0.1s, box-shadow 0.1s;
+    box-shadow: var(--shadow);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .tool-btn .label {
+    font-size: 0.58rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .tool-btn:active { transform: translateY(4px); box-shadow: var(--shadow-sm); }
+
+  #btn-tool  { background: #4d96ff; color: #fff; }
+  #btn-color { background: #ff6b6b; color: #fff; }
+  #btn-clear { background: #6bcb77; color: #fff; }
+  #btn-save       { background: #ffd93d; color: #7a5800; }
+  #btn-fullscreen { background: #bf7fff; color: #fff; }
+
+  #color-dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.9);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  }
+
+  /* Popups */
+  .popup {
+    position: fixed;
+    bottom: calc(var(--toolbar-h) + 10px);
+    left: -9999px;
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 14px 44px rgba(0,0,0,0.22), 0 4px 0 rgba(0,0,0,0.08);
+    padding: 16px;
+    z-index: 200;
+    display: none;
+    border: 3px solid #ffd93d;
+    animation: popIn 0.22s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .popup.open { display: block; }
+
+  @keyframes popIn {
+    from { transform: scale(0.75) translateY(16px); opacity: 0; }
+    to   { transform: scale(1) translateY(0); opacity: 1; }
+  }
+
+  .popup h3 {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.1rem;
+    margin-bottom: 12px;
+    color: #444;
+    text-align: center;
+  }
+
+  /* Tool popup */
+  #popup-tool { width: 224px; }
+  .tool-options {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .opt-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 4px;
+    border: 3px solid #e0e0e0;
+    border-radius: 16px;
+    cursor: pointer;
+    background: #fafafa;
+    font-size: 1.45rem;
+    gap: 4px;
+    transition: border-color 0.12s, background 0.12s, transform 0.1s;
+    user-select: none;
+  }
+  .opt-btn span { font-size: 0.62rem; font-weight: 800; color: #666; text-transform: uppercase; }
+  .opt-btn.active { border-color: #4d96ff; background: #e8f0ff; }
+  .opt-btn:active { transform: scale(0.93); }
+
+  .size-row { display: flex; align-items: center; gap: 10px; }
+  .size-row label { font-weight: 800; font-size: 0.78rem; color: #555; flex-shrink: 0; }
+  #size-slider {
+    -webkit-appearance: none;
+    flex: 1; height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(to right, #4d96ff var(--pct,30%), #ddd var(--pct,30%));
+    outline: none;
+  }
+  #size-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #4d96ff;
+    cursor: pointer;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  }
+  #size-preview {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  #size-dot {
+    background: #4d96ff;
+    border-radius: 50%;
+    transition: width 0.1s, height 0.1s;
+  }
+
+  /* Color popup — centered above the middle toolbar button */
+  #popup-color { width: 262px; }
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 7px;
+  }
+  .swatch {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: transform 0.12s, border-color 0.12s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+  .swatch:hover  { transform: scale(1.2); }
+  .swatch.active { border-color: #fff; box-shadow: 0 0 0 3px #333, 0 2px 4px rgba(0,0,0,0.3); transform: scale(1.18); }
+
+  /* Clear popup */
+  #popup-clear { width: 260px; }
+  .clear-btns { display: flex; gap: 10px; }
+  .clear-btns button {
+    flex: 1; padding: 14px 0;
+    border: none; border-radius: 16px;
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.1s;
+  }
+  .clear-btns button:active { transform: translateY(3px); }
+  #clear-yes { background: #ff6b6b; color: #fff; }
+  #clear-no  { background: #6bcb77; color: #fff; }
+
+  /* Overlay */
+  #overlay {
+    display: none;
+    position: fixed; inset: 0;
+    z-index: 100;
+  }
+  #overlay.open { display: block; }
+</style>
+</head>
+<body>
+
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+</div>
+
+<div id="toolbar">
+  <button class="tool-btn" id="btn-tool">
+    🖌️<span class="label">Nástroj</span>
+  </button>
+  <button class="tool-btn" id="btn-color">
+    <div id="color-dot"></div>
+    <span class="label">Barva</span>
+  </button>
+  <button class="tool-btn" id="btn-clear">
+    🗑️<span class="label">Smazat</span>
+  </button>
+  <button class="tool-btn" id="btn-save">
+    💾<span class="label">Uložit</span>
+  </button>
+  <button class="tool-btn" id="btn-fullscreen">
+    ⛶<span class="label">Celá obr.</span>
+  </button>
+</div>
+
+<!-- Tool Popup -->
+<div class="popup" id="popup-tool">
+  <h3>🖌️ Vyber nástroj</h3>
+  <div class="tool-options">
+    <div class="opt-btn active" data-tool="pencil">✏️<span>Tužka</span></div>
+    <div class="opt-btn" data-tool="brush">🖌️<span>Štětec</span></div>
+    <div class="opt-btn" data-tool="marker">🖊️<span>Fix</span></div>
+    <div class="opt-btn" data-tool="spray">💨<span>Sprej</span></div>
+    <div class="opt-btn" data-tool="star">⭐<span>Hvězdy</span></div>
+    <div class="opt-btn" data-tool="eraser">🧹<span>Guma</span></div>
+  </div>
+  <div class="size-row">
+    <label>📏 Velikost</label>
+    <input type="range" id="size-slider" min="2" max="60" value="12">
+    <div id="size-preview"><div id="size-dot"></div></div>
+  </div>
+</div>
+
+<!-- Color Popup -->
+<div class="popup" id="popup-color">
+  <h3>🎨 Vyber barvu</h3>
+  <div class="palette" id="palette"></div>
+</div>
+
+<!-- Clear Popup -->
+<div class="popup" id="popup-clear">
+  <h3>🗑️ Smazat vše?</h3>
+  <div class="clear-btns">
+    <button id="clear-yes">👍 Ano!</button>
+    <button id="clear-no">👎 Ne!</button>
+  </div>
+</div>
+
+<div id="overlay"></div>
+
+<script>
+const COLORS = [
+  '#ff0000','#ff6600','#ff9966','#ffd1a3','#d2691e','#8B4513',
+  '#ffcc00','#ffff00','#ffffaa','#ccff66','#66bb00','#00cc00',
+  '#004400','#00ff88','#00cccc','#33ccff','#99eeff','#0088ff',
+  '#006699','#003366','#0000ff','#8800ff','#ff00ff','#ff4499',
+  '#330000','#660033','#000000','#888888','#cccccc','#ffffff',
+];
+
+const TOOL_ICONS = {
+  pencil: '✏️', brush: '🖌️', marker: '🖊️',
+  spray: '💨', star: '⭐', eraser: '🧹',
+};
+
+// ── State ─────────────────────────────────────────────
+let tool      = 'pencil';
+let color     = '#e63946';
+let brushSize = 12;
+let painting  = false;
+let lastX = 0, lastY = 0;
+let sprayInterval = null;
+
+// ── Canvas ────────────────────────────────────────────
+const wrap   = document.getElementById('canvas-wrap');
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+
+// ── Persistence ───────────────────────────────────────
+const STORAGE_KEY = 'kidspaint_canvas';
+let saveTimer;
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, canvas.toDataURL('image/png'));
+    } catch(e) { /* storage full – silently ignore */ }
+  }, 800);
+}
+
+function restoreCanvas() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return;
+  const img = new Image();
+  img.onload = () => ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
+  img.src = saved;
+}
+
+// ── Resize ────────────────────────────────────────────
+function resizeCanvas() {
+  const newW = wrap.clientWidth;
+  const newH = wrap.clientHeight;
+  if (newW === 0 || newH === 0) return;
+
+  const tmp = document.createElement('canvas');
+  tmp.width  = canvas.width  || newW;
+  tmp.height = canvas.height || newH;
+  tmp.getContext('2d').drawImage(canvas, 0, 0);
+
+  canvas.width  = newW;
+  canvas.height = newH;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, newW, newH);
+
+  if (tmp.width > 0 && tmp.height > 0) {
+    ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, 0, 0, newW, newH);
+  }
+}
+
+let resizeTimer;
+new ResizeObserver(() => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(resizeCanvas, 60);
+}).observe(wrap);
+
+resizeCanvas();
+restoreCanvas();
+
+// ── Palette ───────────────────────────────────────────
+const paletteEl = document.getElementById('palette');
+COLORS.forEach(c => {
+  const sw = document.createElement('div');
+  sw.className = 'swatch' + (c === color ? ' active' : '');
+  sw.style.background = c;
+  sw.dataset.color = c;
+  paletteEl.appendChild(sw);
+});
+document.getElementById('color-dot').style.background = color;
+
+// ── Drawing ───────────────────────────────────────────
+function getPos(e) {
+  const r      = canvas.getBoundingClientRect();
+  const src    = e.touches ? e.touches[0] : e;
+  const scaleX = canvas.width  / r.width;
+  const scaleY = canvas.height / r.height;
+  return [(src.clientX - r.left) * scaleX, (src.clientY - r.top) * scaleY];
+}
+
+function drawLine(x0, y0, x1, y1) {
+  ctx.beginPath();
+  if (tool === 'eraser') {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+    ctx.lineWidth   = brushSize * 2.5;
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur  = 0;
+  } else {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = color;
+    if (tool === 'pencil') {
+      ctx.lineWidth = brushSize * 0.6; ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+    } else if (tool === 'brush') {
+      ctx.lineWidth = brushSize * 1.8; ctx.globalAlpha = 0.5;
+      ctx.shadowBlur = brushSize; ctx.shadowColor = color;
+    } else if (tool === 'marker') {
+      ctx.lineWidth = brushSize * 1.4; ctx.globalAlpha = 0.85; ctx.shadowBlur = 0;
+    }
+  }
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+function sprayPaint(x, y) {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = color;
+  for (let i = 0; i < 30; i++) {
+    const a = Math.random() * 2 * Math.PI;
+    const r = Math.random() * brushSize * 1.5;
+    ctx.beginPath();
+    ctx.arc(x + r * Math.cos(a), y + r * Math.sin(a), 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawStar(cx, cy) {
+  const outer = brushSize * 1.2, inner = outer * 0.45;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = color;
+  ctx.shadowBlur = 8; ctx.shadowColor = color;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = (i * Math.PI / 5) - Math.PI / 2;
+    i === 0 ? ctx.moveTo(cx + r * Math.cos(a), cy + r * Math.sin(a))
+            : ctx.lineTo(cx + r * Math.cos(a), cy + r * Math.sin(a));
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function startDraw(e) {
+  closePopups();
+  painting = true;
+  const [x, y] = getPos(e);
+  lastX = x; lastY = y;
+  if (tool === 'spray') {
+    sprayPaint(x, y);
+    sprayInterval = setInterval(() => { sprayPaint(lastX, lastY); scheduleSave(); }, 500);
+  } else if (tool === 'star') {
+    drawStar(x, y);
+  } else {
+    drawLine(x, y, x, y);
+  }
+}
+
+function moveDraw(e) {
+  if (!painting) return;
+  e.preventDefault();
+  const [x, y] = getPos(e);
+  if (tool === 'spray') {
+    lastX = x; lastY = y;
+  } else if (tool === 'star') {
+    if (Math.hypot(x - lastX, y - lastY) > brushSize * 1.5) {
+      drawStar(x, y); lastX = x; lastY = y;
+    }
+  } else {
+    drawLine(lastX, lastY, x, y);
+    lastX = x; lastY = y;
+  }
+}
+
+function endDraw() {
+  painting = false;
+  clearInterval(sprayInterval);
+  ctx.beginPath();
+  scheduleSave();
+}
+
+canvas.addEventListener('mousedown',  startDraw);
+window.addEventListener('mousemove',  moveDraw);
+window.addEventListener('mouseup',    endDraw);
+canvas.addEventListener('touchstart', startDraw, { passive: false });
+canvas.addEventListener('touchmove',  moveDraw,  { passive: false });
+canvas.addEventListener('touchend',   endDraw);
+
+// ── Popups ────────────────────────────────────────────
+const overlay = document.getElementById('overlay');
+let openPopup = null;
+
+function closePopups() {
+  document.querySelectorAll('.popup').forEach(p => p.classList.remove('open'));
+  overlay.classList.remove('open');
+  openPopup = null;
+}
+
+function positionPopupAboveButton(popup, btn) {
+  const btnRect = btn.getBoundingClientRect();
+  const popW    = popup.offsetWidth;
+  const margin  = 10;
+  let left = btnRect.left + btnRect.width / 2 - popW / 2;
+  left = Math.max(margin, Math.min(left, window.innerWidth - popW - margin));
+  popup.style.left = left + 'px';
+}
+
+function togglePopup(id, btn) {
+  if (openPopup === id) { closePopups(); return; }
+  closePopups();
+  const popup = document.getElementById(id);
+  // Measure while still hidden so there's no visible jump
+  popup.style.visibility = 'hidden';
+  popup.style.display    = 'block';
+  positionPopupAboveButton(popup, btn);
+  popup.style.visibility = '';
+  popup.style.display    = '';
+  popup.classList.add('open');
+  overlay.classList.add('open');
+  openPopup = id;
+}
+
+overlay.addEventListener('click', closePopups);
+document.getElementById('btn-tool').addEventListener('click',  e => togglePopup('popup-tool',  e.currentTarget));
+document.getElementById('btn-color').addEventListener('click', e => togglePopup('popup-color', e.currentTarget));
+document.getElementById('btn-clear').addEventListener('click', e => togglePopup('popup-clear', e.currentTarget));
+
+// ── Tool selection ────────────────────────────────────
+function setTool(t) {
+  tool = t;
+  const btnTool = document.getElementById('btn-tool');
+  btnTool.childNodes[0].textContent = TOOL_ICONS[t];
+}
+
+document.querySelectorAll('.opt-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    setTool(btn.dataset.tool);
+    closePopups();
+  });
+});
+
+// ── Size slider ───────────────────────────────────────
+const slider  = document.getElementById('size-slider');
+const sizeDot = document.getElementById('size-dot');
+
+function updateSize(val) {
+  brushSize = +val;
+  const pct = ((val - slider.min) / (slider.max - slider.min)) * 100;
+  slider.style.setProperty('--pct', pct + '%');
+  const sz = Math.max(4, Math.min(36, val * 0.8));
+  sizeDot.style.width  = sz + 'px';
+  sizeDot.style.height = sz + 'px';
+}
+slider.addEventListener('input', e => updateSize(e.target.value));
+updateSize(brushSize);
+
+// ── Color selection ───────────────────────────────────
+paletteEl.addEventListener('click', e => {
+  const sw = e.target.closest('.swatch');
+  if (!sw) return;
+  color = sw.dataset.color;
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+  sw.classList.add('active');
+  document.getElementById('color-dot').style.background = color;
+  sizeDot.style.background = color;
+  if (tool === 'eraser') {
+    setTool('brush');
+    document.querySelectorAll('.opt-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.tool === 'brush'));
+  }
+  closePopups();
+});
+
+// ── Clear ─────────────────────────────────────────────
+document.getElementById('clear-yes').addEventListener('click', () => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  localStorage.removeItem(STORAGE_KEY);
+  closePopups();
+});
+document.getElementById('clear-no').addEventListener('click', closePopups);
+
+// ── Save ──────────────────────────────────────────────
+document.getElementById('btn-save').addEventListener('click', () => {
+  canvas.toBlob(async (blob) => {
+    const filename = 'kidspaint-' + Date.now() + '.png';
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: 'image/png' })] })) {
+      try {
+        await navigator.share({ files: [new File([blob], filename, { type: 'image/png' })], title: 'Můj obrázek z KidsPaint!' });
+        return;
+      } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }, 'image/png');
+});
+
+// ── Fullscreen ────────────────────────────────────────
+const btnFs = document.getElementById('btn-fullscreen');
+
+function updateFsIcon() {
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  btnFs.childNodes[0].textContent = isFs ? '✕' : '⛶';
+  btnFs.querySelector('.label').textContent = isFs ? 'Okno' : 'Celá obr.';
+}
+
+btnFs.addEventListener('click', () => {
+  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    (document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen)
+      .call(document.documentElement);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  }
+});
+
+document.addEventListener('fullscreenchange',       updateFsIcon);
+document.addEventListener('webkitfullscreenchange', updateFsIcon);
+</script>
+</body>
+</html>
